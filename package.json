@@ -12,14 +12,13 @@
     "react-scripts": "5.0.1",
     "web-vitals": "^2.1.4"
   },
-  "homepage": "https://AlexGuahk-hub.github.io/auto-trading-ui",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "predeploy": "REACT_APP_BUILD_TARGET=ghpages npm run build && mv build build-ghpages",
+    "deploy": "gh-pages -d build-ghpages"
   },
   "eslintConfig": {
     "extends": [
