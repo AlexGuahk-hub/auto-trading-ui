@@ -1,57 +1,64 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import GlassCard from '../components/GlassCard';
+import Toast from '../components/Toast';
 import * as api from '../services/api';
 
-function ControlBtn({ label, onClick, variant = 'start', disabled }) {
-  return (
-    <button
-      className={`ctrl-btn ctrl-btn--${variant}`}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {label}
-    </button>
-  );
-}
+let toastId = 0;
 
 function StatusDot({ active }) {
   return <span className={`status-dot ${active ? 'on' : 'off'}`} />;
 }
 
 export default function DashboardPage() {
-  const [status, setStatus]   = useState(null);
+  const [status,  setStatus]  = useState(null);
   const [loading, setLoading] = useState({});
-  const [error, setError]     = useState(null);
+  const [toasts,  setToasts]  = useState([]);
+
+  const addToast = useCallback((text, type = 'error') => {
+    const id = ++toastId;
+    setToasts(t => [...t, { id, type, text }]);
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    setToasts(t => t.filter(x => x.id !== id));
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
       const data = await api.getStatus();
       setStatus(data);
     } catch (e) {
-      setError(e.message);
+      addToast(`상태 조회 실패: ${e.message}`);
     }
-  }, []);
+  }, [addToast]);
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-  const call = async (key, fn) => {
+  const call = useCallback(async (key, fn, successMsg) => {
     setLoading(l => ({ ...l, [key]: true }));
     try {
       await fn();
       await fetchStatus();
+      if (successMsg) addToast(successMsg, 'success');
     } catch (e) {
-      setError(e.message);
+      addToast(e.message);
     } finally {
       setLoading(l => ({ ...l, [key]: false }));
     }
-  };
+  }, [fetchStatus, addToast]);
 
   const kisActive   = status?.kis_active;
   const upbitActive = status?.upbit_active;
   const allActive   = kisActive && upbitActive;
 
+  // 버튼 disabled 상태 — 이미 해당 상태면 같은 동작 버튼 비활성
+  const isLoading = (key) => !!loading[key];
+  const anyLoading = Object.values(loading).some(Boolean);
+
   return (
     <div className="page-content">
+      <Toast messages={toasts} onRemove={removeToast} />
+
       <div className="page-header">
         <div>
           <div className="page-title">대시보드</div>
@@ -62,12 +69,6 @@ export default function DashboardPage() {
           실시간 연동
         </div>
       </div>
-
-      {error && (
-        <div className="alert-error" onClick={() => setError(null)}>
-          ⚠️ {error} <span style={{ opacity: .5 }}>(클릭하여 닫기)</span>
-        </div>
-      )}
 
       {/* Status cards */}
       <div className="stat-grid">
@@ -109,7 +110,7 @@ export default function DashboardPage() {
             <div className="stat-label">상태 갱신</div>
             <span style={{ fontSize: 18 }}>🔄</span>
           </div>
-          <div className="stat-value" style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+          <div className="stat-value" style={{ fontSize: 13, color: 'var(--text-muted)' }}>
             클릭하여 갱신
           </div>
           <div className="stat-change">GET /trading/status</div>
@@ -122,21 +123,24 @@ export default function DashboardPage() {
         <GlassCard className="control-card">
           <div className="control-card-title">
             <span>🔁</span> 전체 자동매매
+            <StatusDot active={allActive} />
           </div>
           <div className="control-card-desc">KIS 주식 + 업비트 코인 동시 제어</div>
           <div className="control-btns">
-            <ControlBtn
-              label="전체 시작"
-              variant="start"
-              disabled={loading.all_start}
-              onClick={() => call('all_start', api.startAll)}
-            />
-            <ControlBtn
-              label="전체 중지"
-              variant="stop"
-              disabled={loading.all_stop}
-              onClick={() => call('all_stop', api.stopAll)}
-            />
+            <button
+              className="ctrl-btn ctrl-btn--start"
+              disabled={anyLoading || allActive}
+              onClick={() => call('all_start', api.startAll, '전체 자동매매를 시작했습니다.')}
+            >
+              {isLoading('all_start') ? '시작 중…' : '전체 시작'}
+            </button>
+            <button
+              className="ctrl-btn ctrl-btn--stop"
+              disabled={anyLoading || (!kisActive && !upbitActive)}
+              onClick={() => call('all_stop', api.stopAll, '전체 자동매매를 중지했습니다.')}
+            >
+              {isLoading('all_stop') ? '중지 중…' : '전체 중지'}
+            </button>
           </div>
         </GlassCard>
 
@@ -148,18 +152,20 @@ export default function DashboardPage() {
           </div>
           <div className="control-card-desc">POST /trading/kis/start · /stop</div>
           <div className="control-btns">
-            <ControlBtn
-              label="KIS 시작"
-              variant="start"
-              disabled={loading.kis_start}
-              onClick={() => call('kis_start', api.startKis)}
-            />
-            <ControlBtn
-              label="KIS 중지"
-              variant="stop"
-              disabled={loading.kis_stop}
-              onClick={() => call('kis_stop', api.stopKis)}
-            />
+            <button
+              className="ctrl-btn ctrl-btn--start"
+              disabled={anyLoading || kisActive}
+              onClick={() => call('kis_start', api.startKis, 'KIS 주식 자동매매를 시작했습니다.')}
+            >
+              {isLoading('kis_start') ? '시작 중…' : 'KIS 시작'}
+            </button>
+            <button
+              className="ctrl-btn ctrl-btn--stop"
+              disabled={anyLoading || !kisActive}
+              onClick={() => call('kis_stop', api.stopKis, 'KIS 주식 자동매매를 중지했습니다.')}
+            >
+              {isLoading('kis_stop') ? '중지 중…' : 'KIS 중지'}
+            </button>
           </div>
         </GlassCard>
 
@@ -171,26 +177,31 @@ export default function DashboardPage() {
           </div>
           <div className="control-card-desc">POST /trading/upbit/start · /stop</div>
           <div className="control-btns">
-            <ControlBtn
-              label="업비트 시작"
-              variant="start"
-              disabled={loading.upbit_start}
-              onClick={() => call('upbit_start', api.startUpbit)}
-            />
-            <ControlBtn
-              label="업비트 중지"
-              variant="stop"
-              disabled={loading.upbit_stop}
-              onClick={() => call('upbit_stop', api.stopUpbit)}
-            />
+            <button
+              className="ctrl-btn ctrl-btn--start"
+              disabled={anyLoading || upbitActive}
+              onClick={() => call('upbit_start', api.startUpbit, '업비트 자동매매를 시작했습니다.')}
+            >
+              {isLoading('upbit_start') ? '시작 중…' : '업비트 시작'}
+            </button>
+            <button
+              className="ctrl-btn ctrl-btn--stop"
+              disabled={anyLoading || !upbitActive}
+              onClick={() => call('upbit_stop', api.stopUpbit, '업비트 자동매매를 중지했습니다.')}
+            >
+              {isLoading('upbit_stop') ? '중지 중…' : '업비트 중지'}
+            </button>
           </div>
         </GlassCard>
       </div>
 
       {/* Raw status */}
       {status && (
-        <GlassCard style={{ marginTop: 20 }}>
-          <div className="section-title">응답 데이터 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>GET /trading/status</span></div>
+        <GlassCard style={{ marginTop: 4 }}>
+          <div className="section-title">
+            응답 데이터{' '}
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>GET /trading/status</span>
+          </div>
           <pre className="api-result success" style={{ marginTop: 10 }}>
             {JSON.stringify(status, null, 2)}
           </pre>
