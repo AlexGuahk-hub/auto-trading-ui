@@ -47,8 +47,8 @@ export default function DashboardPage() {
     }
   }, [fetchStatus, addToast]);
 
-  const kisActive   = status?.kis_active;
-  const upbitActive = status?.upbit_active;
+  const kisActive   = status?.kis?.enabled;
+  const upbitActive = status?.upbit?.enabled;
   const allActive   = kisActive && upbitActive;
 
   // 버튼 disabled 상태 — 이미 해당 상태면 같은 동작 버튼 비활성

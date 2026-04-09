@@ -4,7 +4,7 @@
   "outputDirectory": "build",
   "framework": "create-react-app",
   "rewrites": [
-    { "source": "/trading/:path*", "destination": "http://coreclick.duckdns.org/trading/:path*" },
+    { "source": "/trading/:path*", "destination": "https://coreclick.duckdns.org/trading/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
