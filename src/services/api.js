@@ -1,4 +1,4 @@
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://13.209.7.184:8080';
+const BASE_URL = process.env.REACT_APP_API_URL || 'https://coreclick.duckdns.org';
 
 async function request(method, path, body) {
   let res;
