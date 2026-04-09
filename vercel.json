@@ -3,5 +3,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": "build",
   "framework": "create-react-app",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/trading/:path*", "destination": "http://coreclick.duckdns.org/trading/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
