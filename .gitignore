@@ -10,6 +10,7 @@
 
 # production
 /build
+/build-ghpages
 
 # misc
 .DS_Store
