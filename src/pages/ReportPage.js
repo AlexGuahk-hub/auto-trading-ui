@@ -1,34 +1,71 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import GlassCard from '../components/GlassCard';
+import { getReportOrders } from '../services/api';
 
-const SAMPLE = [
-  { date: '2024-04-03', market: '주식', symbol: '삼성전자',  type: '매도', qty: '50주',    price: '₩79,200',        pnl: '+₩124,000', rate: '+3.2%',  pos: true },
-  { date: '2024-04-02', market: '코인', symbol: 'BTC/KRW',  type: '매도', qty: '0.05 BTC', price: '₩87,420,000',   pnl: '+₩320,000', rate: '+7.8%',  pos: true },
-  { date: '2024-04-01', market: '주식', symbol: 'SK하이닉스', type: '매수', qty: '30주',    price: '₩182,500',       pnl: '—',         rate: '보유중',  pos: null },
-  { date: '2024-03-29', market: '코인', symbol: 'ETH/KRW',  type: '매도', qty: '1.2 ETH', price: '₩4,920,000',    pnl: '-₩48,000',  rate: '-0.9%',  pos: false },
-  { date: '2024-03-27', market: '주식', symbol: 'NAVER',    type: '매도', qty: '10주',    price: '₩198,000',       pnl: '+₩86,000',  rate: '+4.5%',  pos: true },
-];
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+function monthAgo() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function fmtAmount(val) {
+  if (val == null) return '—';
+  return '₩' + Number(val).toLocaleString('ko-KR', { maximumFractionDigits: 0 });
+}
+function fmtQty(order) {
+  if (order.exchange === 'KIS') {
+    return order.quantity != null ? `${Number(order.quantity).toLocaleString()}주` : '—';
+  }
+  return order.quantity != null ? Number(order.quantity).toFixed(4) : '—';
+}
 
 export default function ReportPage() {
-  const [marketFilter, setMarketFilter] = useState('전체');
-  const [typeFilter,   setTypeFilter]   = useState('전체');
+  const [startDate,    setStartDate]    = useState(monthAgo());
+  const [endDate,      setEndDate]      = useState(today());
+  const [exchangeFilter, setExchangeFilter] = useState('ALL');
+  const [sideFilter,   setSideFilter]   = useState('전체');
   const [keyword,      setKeyword]      = useState('');
-  const [startDate,    setStartDate]    = useState('2024-01-01');
-  const [endDate,      setEndDate]      = useState('2024-04-04');
+  const [orders,       setOrders]       = useState([]);
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState(null);
 
-  const rows = SAMPLE.filter(r => {
-    if (marketFilter !== '전체' && r.market !== marketFilter) return false;
-    if (typeFilter   !== '전체' && r.type   !== typeFilter)   return false;
-    if (keyword && !r.symbol.toLowerCase().includes(keyword.toLowerCase())) return false;
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getReportOrders(startDate, endDate, exchangeFilter);
+      setOrders(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate, exchangeFilter]);
+
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  const rows = orders.filter(r => {
+    if (sideFilter === '매수' && r.side !== 'BUY')  return false;
+    if (sideFilter === '매도' && r.side !== 'SELL') return false;
+    if (keyword && !r.market.toLowerCase().includes(keyword.toLowerCase())) return false;
     return true;
   });
+
+  const filled = rows.filter(r => r.status === 'FILLED');
+  const failed = rows.filter(r => r.status === 'FAILED');
+  const totalKrw = filled.reduce((s, r) => s + (r.amountKrw ? Number(r.amountKrw) : 0), 0);
+  const buyCount  = filled.filter(r => r.side === 'BUY').length;
+  const sellCount = filled.filter(r => r.side === 'SELL').length;
 
   return (
     <div className="page-content">
       <div className="page-header">
         <div>
           <div className="page-title">매매 리포트</div>
-          <div className="page-sub">주식 및 코인 매매 내역 (샘플 데이터)</div>
+          <div className="page-sub">주식 및 코인 매매 내역</div>
         </div>
         <div className="live-badge"><div className="live-dot" />실시간 연동</div>
       </div>
@@ -36,14 +73,14 @@ export default function ReportPage() {
       {/* Stats */}
       <div className="stat-grid">
         {[
-          { label: '총 손익',    value: '+₩4,820,000', sub: '▲ +12.4% 수익률', cls: 'green', icon: '💰' },
-          { label: '승률',       value: '68.3%',       sub: '41승 / 19패',       cls: '',      icon: '🎯' },
-          { label: '총 거래',    value: '60건',         sub: '주식 38 · 코인 22', cls: '',      icon: '🔄' },
-          { label: '평균 보유',  value: '4.2일',        sub: '최장 18일',         cls: '',      icon: '⏱'  },
+          { label: '총 주문',   value: `${rows.length}건`,   sub: `체결 ${filled.length} · 실패 ${failed.length}`, icon: '🔄' },
+          { label: '체결',      value: `${filled.length}건`, sub: `매수 ${buyCount} · 매도 ${sellCount}`,           icon: '✅' },
+          { label: '실패',      value: `${failed.length}건`, sub: rows.length > 0 ? `실패율 ${((failed.length / rows.length) * 100).toFixed(1)}%` : '—', icon: '❌' },
+          { label: '총 거래금액', value: fmtAmount(totalKrw), sub: '체결 기준 합산',                                icon: '💰' },
         ].map(s => (
           <GlassCard key={s.label} className="stat-card">
             <div className="stat-top"><div className="stat-label">{s.label}</div><span style={{fontSize:18}}>{s.icon}</span></div>
-            <div className={`stat-value ${s.cls}`}>{s.value}</div>
+            <div className="stat-value">{s.value}</div>
             <div className="stat-change">{s.sub}</div>
           </GlassCard>
         ))}
@@ -58,30 +95,30 @@ export default function ReportPage() {
             <div className="filter-date-row">
               <input className="glass-input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
               <span className="filter-date-sep">—</span>
-              <input className="glass-input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+              <input className="glass-input" type="date" value={endDate}   onChange={e => setEndDate(e.target.value)} />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <div className="filter-group" style={{ flex: 1 }}>
-              <div className="filter-label">마켓</div>
-              <select className="glass-input" value={marketFilter} onChange={e => setMarketFilter(e.target.value)}>
-                {['전체','주식','코인'].map(v => <option key={v}>{v}</option>)}
+              <div className="filter-label">거래소</div>
+              <select className="glass-input" value={exchangeFilter} onChange={e => setExchangeFilter(e.target.value)}>
+                {['ALL','KIS','UPBIT'].map(v => <option key={v} value={v}>{v === 'ALL' ? '전체' : v === 'KIS' ? 'KIS(주식)' : 'UPBIT(코인)'}</option>)}
               </select>
             </div>
             <div className="filter-group" style={{ flex: 1 }}>
               <div className="filter-label">유형</div>
-              <select className="glass-input" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+              <select className="glass-input" value={sideFilter} onChange={e => setSideFilter(e.target.value)}>
                 {['전체','매수','매도'].map(v => <option key={v}>{v}</option>)}
               </select>
             </div>
           </div>
           <div className="filter-group">
             <div className="filter-label">종목 검색</div>
-            <input className="glass-input" placeholder="종목명 / 코드" value={keyword} onChange={e => setKeyword(e.target.value)} />
+            <input className="glass-input" placeholder="종목코드 (예: 005930, KRW-BTC)" value={keyword} onChange={e => setKeyword(e.target.value)} />
           </div>
           <div className="filter-actions">
-            <button className="btn-primary" style={{ flex: 1 }} onClick={() => {}}>조회</button>
-            <button className="btn-ghost" onClick={() => { setMarketFilter('전체'); setTypeFilter('전체'); setKeyword(''); }}>초기화</button>
+            <button className="btn-primary" style={{ flex: 1 }} onClick={fetchOrders}>조회</button>
+            <button className="btn-ghost" onClick={() => { setSideFilter('전체'); setKeyword(''); }}>초기화</button>
           </div>
         </div>
       </GlassCard>
@@ -92,30 +129,41 @@ export default function ReportPage() {
           <div className="table-top-title">거래 내역</div>
           <div className="count-chip">총 {rows.length}건</div>
         </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>{['날짜','마켓','종목','유형','수량','매매가','손익','수익률'].map(h => <th key={h}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  <td>{r.date}</td>
-                  <td><span className={`tag ${r.market === '주식' ? 'stock' : 'coin'}`}>{r.market}</span></td>
-                  <td className="symbol-name">{r.symbol}</td>
-                  <td><span className={`tag ${r.type === '매수' ? 'buy' : 'sell'}`}>{r.type}</span></td>
-                  <td>{r.qty}</td>
-                  <td>{r.price}</td>
-                  <td className={r.pos === true ? 'profit' : r.pos === false ? 'loss' : 'holding'}>{r.pnl}</td>
-                  <td className={r.pos === true ? 'profit' : r.pos === false ? 'loss' : 'holding'}>{r.rate}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr><td colSpan={8} style={{textAlign:'center',color:'var(--text-muted)',padding:'32px'}}>조회 결과가 없습니다</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+
+        {error && (
+          <div style={{ padding: '16px', color: 'var(--red)', textAlign: 'center' }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>불러오는 중...</div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>{['날짜/시간','거래소','종목','유형','수량','금액(KRW)','전략','상태'].map(h => <th key={h}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{r.createdAt}</td>
+                    <td><span className={`tag ${r.exchange === 'KIS' ? 'stock' : 'coin'}`}>{r.exchange === 'KIS' ? '주식' : '코인'}</span></td>
+                    <td className="symbol-name">{r.market}</td>
+                    <td><span className={`tag ${r.side === 'BUY' ? 'buy' : 'sell'}`}>{r.side === 'BUY' ? '매수' : '매도'}</span></td>
+                    <td>{fmtQty(r)}</td>
+                    <td>{fmtAmount(r.amountKrw)}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}>{r.strategy || '—'}</td>
+                    <td><span className={`tag ${r.status === 'FILLED' ? 'buy' : 'sell'}`}>{r.status === 'FILLED' ? '체결' : '실패'}</span></td>
+                  </tr>
+                ))}
+                {rows.length === 0 && !loading && (
+                  <tr><td colSpan={8} style={{textAlign:'center',color:'var(--text-muted)',padding:'32px'}}>조회 결과가 없습니다</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </GlassCard>
     </div>
   );

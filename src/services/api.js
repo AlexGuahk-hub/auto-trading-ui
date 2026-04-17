@@ -48,3 +48,7 @@ export const getKisBalance    = ()     => request('GET', '/trading/kis/balance')
 export const getUpbitPrice    = (market) => request('GET', `/trading/upbit/price/${market}`);
 export const getUpbitBalance  = ()       => request('GET', '/trading/upbit/balance');
 export const getUpbitAccounts = ()       => request('GET', '/trading/upbit/accounts');
+
+// ── Report ────────────────────────────────────────────────
+export const getReportOrders = (from, to, exchange = 'ALL') =>
+  request('GET', `/trading/report/orders?from=${from}&to=${to}&exchange=${exchange}`);
